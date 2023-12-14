@@ -1,0 +1,109 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+# https://learn.microsoft.com/azure/devops/pipelines/ecosystems/xcode
+
+trigger:
+- main
+
+pool: 
+  name: Default
+  vmImage: 'macOS-latest'
+
+stages:
+
+- stage: Checkout
+  jobs:
+  - job: CheckoutRepository
+    steps:
+    - checkout: self
+      fetchDepth: 0
+
+- stage: Build
+  jobs:
+  - job: InstallDependecyAndPackages
+    steps:
+    - script: |
+        brew update
+        brew install --cask adoptopenjdk/openjdk/adoptopenjdk11
+      displayName: 'Install Java Runtime'
+    - task: NodeTool@0
+      inputs:
+        versionSource: 'spec'
+        versionSpec: '18.x'
+        checkLatest: true
+      displayName: 'Install Node.js'
+    - script: |
+        npm uninstall uuid
+        npm install uuid --save
+        npm install uuid@3.4.0 --save
+      displayName: 'Install uuid'
+    # - script: |
+    #     npm uninstall esm && npm install --save-dev esm
+    #   displayName: 'Test esm'
+
+
+- stage: Test
+  jobs:
+  - job: TestBrowserStack
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+        architecture: 'x64'
+      displayName: 'Install Python'
+    - script: |
+        pip install -r requirements.txt
+      displayName: 'Install Requirements'
+    - script: |
+        python ./ios/browserstack_sample.py
+      displayName: 'Run Test browserstack.py'
+
+  - job: IntegrationTestBrowserStack
+    steps: 
+    - task: BrowserStackConfig@0
+      inputs:
+        BrowserStackServiceEndPoint: 'BrowserStack Connection'
+    # - task: BrowserStackResults@1
+    #   inputs:
+    #     browserstackProduct: 'automate'
+
+- stage: Scan
+  jobs:
+  - job: ScanSonarCloud
+    steps:
+    - task: SonarCloudPrepare@1
+      inputs:
+        SonarCloud: 'SonarCloud'
+        organization: 'vitorcscontato'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: 'vitorcscontato_bees_ios_app'
+        cliProjectName: 'bees_ios_app'
+        cliSources: '.'
+    - task: SonarCloudAnalyze@1
+    - task: SonarCloudPublish@1
+      inputs:
+        pollingTimeoutSec: '300'
+        # Verify test coverage meets the 80% threshold
+        additionalProperties: |
+          sonar.qualitygate.wait=80 
+
+- stage: Deploy
+  jobs:
+  - job: DeployApp
+    steps:
+    - script: |
+        echo  -e "\n#### Deploying BEES app ###\n"
+      displayName: 'Deploy'
+
+# - task: Xcode@5
+#   inputs:
+#     actions: 'build'
+#     scheme: ''
+#     sdk: 'iphoneos'
+#     configuration: 'Release'
+#     xcWorkspacePath: '**/*.xcodeproj/project.xcworkspace'
+#     xcodeVersion: 'default'
